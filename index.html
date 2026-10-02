@@ -66,6 +66,7 @@ h1{margin:0;font-size:30px;line-height:1.1;font-weight:800;letter-spacing:.04em}
 .badge{display:inline-block;min-width:56px;padding:3px 10px;border-radius:6px;background:var(--kmb);color:#fff;text-align:center;font:800 20px/1.3 var(--digits)}
 .badge.ctb{background:#FFD100;color:#16222D}
 .badge.gmb{background:#00843D;color:#fff}
+.badge.nlb{background:#6A3FA0;color:#fff}
 
 .board-head{display:flex;align-items:center;gap:12px;margin:16px 0 8px}
 .board-head .dest{font-weight:800;font-size:18px;line-height:1.3}
@@ -82,6 +83,7 @@ h1{margin:0;font-size:30px;line-height:1.1;font-weight:800;letter-spacing:.04em}
 .stops .name{font-weight:600;line-height:1.35}
 .namecell{min-width:0}
 .dist{display:block;font-weight:400;color:var(--muted);font-size:13px;line-height:1.3}
+.fare{display:block;font-weight:400;color:#0B7285;font-size:13px;line-height:1.3}
 .stops li.nearest{background:#FFF6DC;box-shadow:inset 4px 0 0 var(--ink)}
 .stop-btn{background:none;border:0;padding:8px 0;text-align:left;font-weight:600;line-height:1.35;color:inherit;border-radius:6px}
 .stop-btn::after{content:"▸";margin-left:8px;color:var(--rule-strong)}
@@ -175,6 +177,7 @@ footer .sched-key{display:inline-block;border:2px dashed var(--rule-strong);bord
   <nav class="tabs" role="tablist" aria-label="交通工具">
     <button role="tab" id="t-bus" data-tab="bus" aria-selected="true">巴士／小巴</button>
     <button role="tab" id="t-mtr" data-tab="mtr" aria-selected="false">港鐵</button>
+    <button role="tab" id="t-ferry" data-tab="ferry" aria-selected="false">渡輪</button>
     <button role="tab" id="t-fav" data-tab="fav" aria-selected="false">收藏</button>
   </nav>
 
@@ -194,12 +197,32 @@ footer .sched-key{display:inline-block;border:2px dashed var(--rule-strong);bord
   </section>
 
   <section class="panel" id="p-mtr" role="tabpanel" aria-labelledby="t-mtr" hidden>
-    <div class="chips" id="lineChips" role="group" aria-label="港鐵路綫"></div>
-    <label class="field">
-      <span>車站</span>
-      <select id="staSel"></select>
-    </label>
+    <div class="chips" id="railModeChips" role="group" aria-label="鐵路系統">
+      <button class="chip" type="button" data-mode="heavy" aria-pressed="true" style="--c:#16222D">港鐵</button>
+      <button class="chip" type="button" data-mode="light" aria-pressed="false" style="--c:#B5A642;--fg:#16222D">輕鐵</button>
+    </div>
+    <div id="heavyRailUI">
+      <div class="chips" id="lineChips" role="group" aria-label="港鐵路綫"></div>
+      <label class="field">
+        <span>車站</span>
+        <select id="staSel"></select>
+      </label>
+    </div>
+    <div id="lightRailUI" hidden>
+      <label class="field">
+        <span>輕鐵站</span>
+        <select id="lrtSel"></select>
+      </label>
+    </div>
     <div id="mtrBoard"></div>
+  </section>
+
+  <section class="panel" id="p-ferry" role="tabpanel" aria-labelledby="t-ferry" hidden>
+    <label class="field">
+      <span>航線</span>
+      <select id="ferrySel"></select>
+    </label>
+    <div id="ferryBoard"></div>
   </section>
 
   <section class="panel" id="p-fav" role="tabpanel" aria-labelledby="t-fav" hidden>
@@ -215,7 +238,7 @@ footer .sched-key{display:inline-block;border:2px dashed var(--rule-strong);bord
     <p><span class="sched-key">虛線框</span> 代表按時間表預計的班次，並非實時位置。時間每 30 秒自動更新。</p>
     <p><button class="link" id="diagBtn" type="button">檢查資料連線</button></p>
     <div class="diag" id="diag" hidden></div>
-    <p>資料來源：香港政府資料一站通（data.gov.hk）提供的九巴、城巴、專線小巴及港鐵開放數據。到站時間只作參考，以車站或車上顯示為準。</p>
+    <p>資料來源：香港政府資料一站通（data.gov.hk）提供的九巴、城巴、新大嶼山巴士、專線小巴、港鐵及新渡輪開放數據。到站時間只作參考，以車站或車上顯示為準。</p>
   </footer>
 </div>
 
@@ -226,14 +249,34 @@ footer .sched-key{display:inline-block;border:2px dashed var(--rule-strong);bord
 const KMB = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const CTB = 'https://rt.data.gov.hk/v2/transport/citybus';
 const GMB = 'https://data.etagmb.gov.hk';
+const NLB = 'https://rt.data.gov.hk/v2/transport/nlb';
+const FERRY = 'https://www.sunferry.com.hk/eta/';
 const MTR = 'https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php';
+const LRT = 'https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule';
 const REFRESH_MS = 30000;
 
 const CO = {
-  KMB:{name:'九巴',     cls:'kmb', line:'#D8232A'},
-  CTB:{name:'城巴',     cls:'ctb', line:'#E0A800'},
-  GMB:{name:'專線小巴', cls:'gmb', line:'#00843D'},
+  KMB:{name:'九巴',       cls:'kmb', line:'#D8232A'},
+  CTB:{name:'城巴',       cls:'ctb', line:'#E0A800'},
+  GMB:{name:'專線小巴',   cls:'gmb', line:'#00843D'},
+  NLB:{name:'新大嶼山巴士', cls:'nlb', line:'#6A3FA0'},
 };
+// Sun Ferry ETA API only covers these fixed directional routes (each code is one direction).
+const FERRY_GROUPS = [
+  {n:'市區航線', r:[
+    {code:'CECC', orig:'中環', dest:'長洲'}, {code:'CCCE', orig:'長洲', dest:'中環'},
+    {code:'CEMW', orig:'中環', dest:'梅窩'}, {code:'MWCE', orig:'梅窩', dest:'中環'},
+    {code:'NPHH', orig:'北角', dest:'紅磡'}, {code:'HHNP', orig:'紅磡', dest:'北角'},
+    {code:'NPKC', orig:'北角', dest:'九龍城'}, {code:'KCNP', orig:'九龍城', dest:'北角'},
+  ]},
+  {n:'離島橫水渡', r:[
+    {code:'IIPECMUW', orig:'坪洲', dest:'梅窩'}, {code:'IIMUWPEC', orig:'梅窩', dest:'坪洲'},
+    {code:'IIMUWCMW', orig:'梅窩', dest:'芝麻灣'}, {code:'IICMWMUW', orig:'芝麻灣', dest:'梅窩'},
+    {code:'IICMWCHC', orig:'芝麻灣', dest:'長洲'}, {code:'IICHCCMW', orig:'長洲', dest:'芝麻灣'},
+    {code:'IICHCMUW', orig:'長洲', dest:'梅窩'}, {code:'IIMUWCHC', orig:'梅窩', dest:'長洲'},
+  ]},
+];
+const FERRY_BY_CODE = Object.fromEntries(FERRY_GROUPS.flatMap(g => g.r).map(r => [r.code, r]));
 const REGION = {HKI:'港島', KLN:'九龍', NT:'新界'};
 
 /* ---------- MTR reference data ---------- */
@@ -248,6 +291,22 @@ const LINES = {
   AEL:{n:'機場快綫',c:'#00888A', s:['HOK','KOW','TSY','AIR','AWE']},
   SIL:{n:'南港島綫',c:'#BAC429', fg:'#16222D', s:['ADM','OCP','WCH','LEI','SOH']},
   DRL:{n:'迪士尼綫',c:'#F173AC', fg:'#16222D', s:['SUN','DIS']},
+};
+
+// Light Rail station list (official: opendata.mtr.com.hk/data/light_rail_routes_and_stops.csv), grouped by area for the picker.
+const LRT_AREAS = [
+  {n:'屯門', s:[1,10,15,20,30,40,50,60,70,75,80,90,100,110,120,130,140,150,160,170,180,190,200,212,220,230,240,250,260,265,270,275,280,295,300,310,320,330,340,350,360,370,920]},
+  {n:'洪水橋 · 屏山', s:[380,390,400,560,570,580,590,600]},
+  {n:'天水圍', s:[425,430,435,445,448,450,455,460,468,480,490,500,510,520,530,540,550]},
+];
+const LRT_NAMES = {
+  920:'三聖',265:'兆麟',270:'安定',280:'市中心',295:'屯門',60:'建安',190:'山景(南)',180:'山景(北)',170:'石排',160:'新圍',
+  150:'良景',140:'田景',130:'建生',120:'青松',110:'麒麟',100:'兆康',200:'鳴琴',1:'屯門碼頭',240:'兆禧',250:'海皇路',
+  260:'豐景園',70:'河田',75:'蔡意橋',230:'銀圍',220:'大興(南)',212:'大興(北)',300:'杯渡',310:'何福堂',320:'新墟',
+  330:'景峰',340:'鳳地',50:'青雲',40:'青山村',30:'龍門',20:'輕鐵車廠',15:'蝴蝶',10:'美樂',80:'澤豐',90:'屯門醫院',
+  350:'藍地',360:'泥圍',370:'鍾屋村',380:'洪水橋',390:'塘坊村',400:'屏山',560:'水邊圍',570:'豐年路',580:'康樂路',
+  590:'大棠路',600:'元朗',430:'天水圍',435:'天慈',450:'天湖',455:'銀座',500:'天榮',510:'天悅',520:'天秀',530:'濕地公園',
+  540:'天恒',550:'天逸',480:'天富',468:'頌富',460:'天瑞',448:'樂湖',445:'天耀',275:'友愛',425:'坑尾村',490:'翠湖'
 };
 const NAMES = {
   HOK:'香港',KOW:'九龍',TSY:'青衣',AIR:'機場',AWE:'博覽館',OLY:'奧運',NAC:'南昌',LAK:'荔景',SUN:'欣澳',TUC:'東涌',
@@ -305,22 +364,32 @@ function dist(lat1, lon1, lat2, lon2){
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 function empty(msg){ return h('p', {class:'empty'}, msg); }
+function fareNote(fare, fareHoliday){
+  const a = Number(fare), b = Number(fareHoliday);
+  if (!Number.isFinite(a)) return null;
+  const txt = (Number.isFinite(b) && b !== a) ? `車費 $${a.toFixed(1)}（假日 $${b.toFixed(1)}）` : `車費 $${a.toFixed(1)}`;
+  return h('small', {class:'fare'}, txt);
+}
 function badge(co, text){ return h('span', {class:'badge ' + CO[co].cls}, text); }
 
 /* ---------- state & favourites ---------- */
 function loadFavs(){ try{ return JSON.parse(localStorage.getItem('hketa.favs') || '[]'); } catch { return []; } }
-const state = { tab:'bus', bus:null, mtr:{line:'TWL', sta:'CEN'}, favs:loadFavs(), token:0, expanded:new Set() };
+const state = { tab:'bus', bus:null, mtr:{line:'TWL', sta:'CEN'}, rail:'heavy', lrt:{sta:100}, favs:loadFavs(), token:0, expanded:new Set() };
 const cache = {
   kmbRoutes:null, kmbStops:null,
   ctbRoutes:null, ctbStopNames:new Map(), ctbRouteStops:new Map(),
   gmbRoutes:null, gmbRouteStops:new Map(),
-  stopPos:new Map()   // 'CTB|id' / 'GMB|id' -> {lat, lng, enabled}
+  nlbRoutes:null, nlbRouteStops:new Map(),
+  stopPos:new Map()   // 'CTB|id' / 'GMB|id' / 'NLB|id' -> {lat, lng, enabled}
 };
 function saveFavs(){ try{ localStorage.setItem('hketa.favs', JSON.stringify(state.favs)); } catch {} }
 function favId(f){
   if (f.type === 'kmb') return ['kmb', f.route, f.bound, f.st, f.stop].join('|');
   if (f.type === 'ctb') return ['ctb', f.route, f.dir, f.stop].join('|');
   if (f.type === 'gmb') return ['gmb', f.route_id, f.seq, f.stopSeq].join('|');
+  if (f.type === 'nlb') return ['nlb', f.routeId, f.stop].join('|');
+  if (f.type === 'ferry') return ['ferry', f.code].join('|');
+  if (f.type === 'lrt') return ['lrt', f.sta].join('|');
   return ['mtr', f.line, f.sta].join('|');
 }
 function isFav(f){ return state.favs.some(x => favId(x) === favId(f)); }
@@ -395,6 +464,31 @@ async function ensureCtbRoutes(){
   if (!cache.ctbRoutes) cache.ctbRoutes = (await getJSON(CTB + '/route/CTB', 30000)).data || [];
   return cache.ctbRoutes;
 }
+// New Lantao Bus Open API v2.0: route.php?action=list (no auth) -> { routes:[{routeId, routeNo, routeName_c, ...}] }
+async function ensureNlbRoutes(){
+  if (!cache.nlbRoutes) cache.nlbRoutes = (await getJSON(NLB + '/route.php?action=list', 20000)).routes || [];
+  return cache.nlbRoutes;
+}
+// stop.php?action=list&routeId=X -> { stops:[{stopId, stopName_c, latitude, longitude, ...}] }, already in route order
+async function nlbStopsFor(r){
+  if (!cache.nlbRouteStops.has(r.routeId)){
+    const j = await getJSON(`${NLB}/stop.php?action=list&routeId=${r.routeId}`);
+    const list = (j.stops || []);
+    for (const s of list) cache.stopPos.set('NLB|' + s.stopId, {lat:Number(s.latitude), lng:Number(s.longitude)});
+    cache.nlbRouteStops.set(r.routeId, list);
+  }
+  return cache.nlbRouteStops.get(r.routeId);
+}
+// stop.php?action=estimatedArrivals -> { estimatedArrivals:[{estimatedArrivalTime, generateTime, departed, ...}], message }
+function nlbEtaItems(j){
+  const arr = j.estimatedArrivals;
+  if (!arr || !arr.length) return [{rmk_tc:j.message || '暫無班次資料'}];
+  return arr.map(e => ({
+    mins:Math.round((new Date(e.estimatedArrivalTime) - new Date(e.generateTime)) / 60000),
+    rmk_tc: e.departed ? '已從總站開出' : ''
+  }));
+}
+
 async function ensureGmbRoutes(){
   if (!cache.gmbRoutes){
     let j;
@@ -544,17 +638,19 @@ async function searchRoute(){
   box.replaceChildren();
   if (!q) return;
   try{
-    const [k, c, g] = await Promise.all([
+    const [k, c, n, g] = await Promise.all([
       ensureKmbRoutes().then(v => ({v}), e => ({e})),
       ensureCtbRoutes().then(v => ({v}), e => ({e})),
+      ensureNlbRoutes().then(v => ({v}), e => ({e})),
       gmbLookup(q)
     ]);
-    const kr = k.v || [], cr = c.v || [];
+    const kr = k.v || [], cr = c.v || [], nr = n.v || [];
     const problems = [];
     if (k.e) problems.push('九巴（' + errText(k.e) + '）');
     if (c.e) problems.push('城巴（' + errText(c.e) + '）');
+    if (n.e) problems.push('新大嶼山巴士（' + errText(n.e) + '）');
     if (g.error) problems.push('專線小巴（' + errText(g.error) + '）');
-    if (problems.length < 3) clearError();
+    if (problems.length < 4) clearError();
     else showError(k.e);
 
     const choices = [];
@@ -565,6 +661,11 @@ async function searchRoute(){
     cr.filter(r => r.route === q).forEach(r => {
       choices.push({co:'CTB', route:q, dir:'outbound', orig:r.orig_tc, dest:r.dest_tc});
       choices.push({co:'CTB', route:q, dir:'inbound',  orig:r.dest_tc, dest:r.orig_tc});
+    });
+    nr.filter(r => r.routeNo === q).forEach(r => {
+      const parts = (r.routeName_c || '').split('>').map(x => x.trim());
+      choices.push({co:'NLB', route:r.routeNo, routeId:r.routeId, orig:parts[0] || '', dest:parts[1] || r.routeName_c,
+        note:(r.specialRoute ? '（特別班次）' : '') + (r.overnightRoute ? '（通宵）' : '')});
     });
     for (const f of g.found) for (const rt of f.routes) for (const d of (rt.directions || []))
       choices.push({co:'GMB', route:q, region:rt.region || f.region, route_id:rt.route_id, seq:d.route_seq,
@@ -593,7 +694,7 @@ async function searchRoute(){
     }
     const gr = cache.gmbRoutes || {};
     const similar = [...new Set([
-      ...kr.map(r => r.route), ...cr.map(r => r.route), ...Object.values(gr).flat()
+      ...kr.map(r => r.route), ...cr.map(r => r.route), ...nr.map(r => r.routeNo), ...Object.values(gr).flat()
     ].filter(x => x.startsWith(q)))].sort(numeric).slice(0, 24);
     if (similar.length){
       box.append(h('p', {class:'hint'}, `找不到路線 ${q}，你是否想找：`),
@@ -602,7 +703,7 @@ async function searchRoute(){
     } else {
       box.append(h('p', {class:'hint'}, problems.length
         ? `暫時搵唔到路線 ${q}（部分資料未能載入）。`
-        : `找不到路線 ${q}。目前支援九巴、龍運、城巴及專線小巴。`));
+        : `找不到路線 ${q}。目前支援九巴、龍運、城巴、新大嶼山巴士及專線小巴。`));
     }
   } catch (e){ showError(e); }
 }
@@ -650,7 +751,7 @@ function lazyList(co, items){
       refreshActive();
     });
     fill();
-    return h('li', {class:it.nearest ? 'nearest' : null}, h('div', {class:'namecell'}, btn, nameNote(it.info)), slot, starBtn(it.fav));
+    return h('li', {class:it.nearest ? 'nearest' : null}, h('div', {class:'namecell'}, btn, nameNote(it.info), it.fare || null), slot, starBtn(it.fav));
   }));
 }
 
@@ -718,6 +819,37 @@ async function refreshCtb(r, out, token){
       const name = cache.ctbStopNames.get(s.stop) || s.stop;
       return {id:s.stop, name, entry:etaMap.get(s.stop), info:info && info.m.get(s.stop), nearest:!!info && info.nearest === s.stop,
         fav:{type:'ctb', route:r.route, dir:r.dir, stop:s.stop, name, dest:r.dest}};
+    })));
+  scrollToNearest(b, out);
+}
+
+async function refreshNlb(r, out, token){
+  const b = state.bus;
+  const list = await nlbStopsFor(r);
+  if (token !== state.token) return;
+  if (!list.length){
+    out.replaceChildren(boardHead(r), empty('暫時沒有這條路線的車站資料。'));
+    return;
+  }
+  const info = b.here ? distInfo(b.here, list.map(s => ({id:String(s.stopId), pos:cache.stopPos.get('NLB|' + s.stopId)}))) : null;
+  if (!b.opened){ b.opened = true; state.expanded.add(String(list[0].stopId)); }
+  if (b.pendingNearest && info && info.nearest) state.expanded.add(info.nearest);
+  settleNearest(b, info);
+  const ids = [...state.expanded].filter(id => list.some(s => String(s.stopId) === id));
+  const res = await Promise.allSettled(ids.map(id => getJSON(`${NLB}/stop.php?action=estimatedArrivals&routeId=${r.routeId}&stopId=${id}&language=zh`)));
+  if (token !== state.token) return;
+  const etaMap = new Map();
+  ids.forEach((id, i) => {
+    const x = res[i];
+    etaMap.set(id, x.status === 'fulfilled' ? {items:nlbEtaItems(x.value), now:new Date()} : {error:true});
+  });
+  out.replaceChildren(boardHead(r), nearBar(b),
+    h('p', {class:'hint'}, '點選車站，查看該站的到站時間。'),
+    lazyList('NLB', list.map(s => {
+      const id = String(s.stopId);
+      return {id, name:s.stopName_c, entry:etaMap.get(id), info:info && info.m.get(id), nearest:!!info && info.nearest === id,
+        fare:fareNote(s.fare, s.fareHoliday),
+        fav:{type:'nlb', routeId:r.routeId, stop:s.stopId, code:r.route, name:s.stopName_c, dest:r.dest}};
     })));
   scrollToNearest(b, out);
 }
@@ -802,6 +934,7 @@ async function refreshBus(token){
   const r = b.r;
   if (r.co === 'KMB') return refreshKmb(r, out, token);
   if (r.co === 'CTB') return refreshCtb(r, out, token);
+  if (r.co === 'NLB') return refreshNlb(r, out, token);
   return refreshGmb(r, out, token);
 }
 
@@ -839,12 +972,64 @@ function mtrCard(line, sta, j, compact){
       starBtn({type:'mtr', line, sta})),
     mtrPanel(line, sta, j, compact));
 }
+// Light Rail Next Train (rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=..&with_special=1):
+// data.platform_list[].route_list[] = {route_no, dest_ch, dest_en, time_ch, time_en, special, additionalInfo1, routeRemarkChi2}
+function lrtMinutes(t){
+  if (!t || t === '-') return null;
+  const m = t.match(/\d+/);
+  return m ? Number(m[0]) : 0; // a route with no digits (e.g. "-") but present usually means "arriving"
+}
+function lrtPill(t, first){
+  const m = lrtMinutes(t);
+  const p = h('span', {class:'pill' + (first ? ' first' : '')});
+  if (m == null) p.append('—');
+  else if (m <= 0) p.append('即將');
+  else p.append(h('b', {}, String(m)), h('i', {}, '分'));
+  return p;
+}
+function lrtCard(staId, j){
+  const platforms = (j && j.platform_list) || [];
+  const root = h('div', {});
+  if (!platforms.length){
+    root.append(h('p', {class:'hint', style:'padding:0 14px'}, '暫時沒有班次資料（可能已收車）。'));
+    return root;
+  }
+  platforms.sort((a, b) => a.platform_id - b.platform_id).forEach(p => {
+    const rows = (p.route_list || []);
+    if (!rows.length) return;
+    root.append(h('div', {class:'mtr-dir'},
+      h('div', {class:'mtr-row', style:'grid-template-columns:auto 1fr auto'},
+        h('span', {class:'plat'}, '月台 ' + p.platform_id), h('span', {}), h('span', {})),
+      rows.map((r, i) => h('div', {class:'mtr-row', title:r.routeRemarkChi2 || ''},
+        h('span', {class:'dest'}, badge('KMB', r.route_no), ' 往 ' + r.dest_ch),
+        h('span', {class:'plat'}, r.special ? (r.additionalInfo1 || '特別班次') : ''),
+        h('span', {}),
+        lrtPill(r.time_ch, i === 0)))));
+  });
+  return root;
+}
+function lrtSection(staId, j, compact){
+  return h('section', {class:'mtr-card'},
+    h('header', {style:'--c:#B5A642'},
+      h('h2', {}, (LRT_NAMES[staId] || staId) + '站', h('small', {}, '輕鐵')),
+      starBtn({type:'lrt', sta:staId})),
+    lrtCard(staId, j, compact));
+}
+async function refreshLrt(token){
+  const staId = state.lrt.sta;
+  const j = await getJSON(`${LRT}?station_id=${staId}&with_special=1`);
+  if (token !== state.token) return;
+  $('#mtrBoard').replaceChildren(lrtSection(staId, j));
+}
+
 async function refreshMtr(token){
+  if (state.rail === 'light') return refreshLrt(token);
   const {line, sta} = state.mtr;
   const j = await getJSON(`${MTR}?line=${line}&sta=${sta}`);
   if (token !== state.token) return;
   $('#mtrBoard').replaceChildren(mtrCard(line, sta, j, false));
 }
+
 function buildMtrControls(){
   const chips = $('#lineChips'), sel = $('#staSel');
   const fillStations = () => {
@@ -863,6 +1048,59 @@ function buildMtrControls(){
   };
   sel.addEventListener('change', () => { state.mtr.sta = sel.value; refreshActive(); });
   drawChips(); fillStations();
+
+  const lrtSel = $('#lrtSel');
+  lrtSel.replaceChildren(...LRT_AREAS.map(area =>
+    h('optgroup', {label:area.n}, area.s.map(id => h('option', {value:id}, LRT_NAMES[id] || id)))));
+  lrtSel.value = state.lrt.sta;
+  lrtSel.addEventListener('change', () => { state.lrt.sta = Number(lrtSel.value); refreshActive(); });
+
+  document.querySelectorAll('#railModeChips .chip').forEach(b => b.addEventListener('click', () => {
+    state.rail = b.dataset.mode === 'light' ? 'light' : 'heavy';
+    document.querySelectorAll('#railModeChips .chip').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    $('#heavyRailUI').hidden = state.rail !== 'heavy';
+    $('#lightRailUI').hidden = state.rail !== 'light';
+    refreshActive();
+  }));
+}
+
+// Sun Ferry ETA (www.sunferry.com.hk/eta/?route=CODE): { generated_timestamp, data:[{route_tc, vesselcode, depart_time, eta, rmk_tc}] }
+// Not a data.gov.hk-hosted domain, so this call may be blocked if Sun Ferry's server doesn't allow cross-origin browser requests.
+function ferryPill(item, now, first){
+  const m = Math.round((new Date(item.eta) - now) / 60000);
+  const p = h('span', {class:'pill' + (first ? ' first' : '')});
+  if (isNaN(m)) p.append('—');
+  else if (m <= 0) p.append('即將');
+  else p.append(h('b', {}, String(m)), h('i', {}, '分'));
+  return p;
+}
+function ferryCard(code, j, compact){
+  const info = FERRY_BY_CODE[code] || {orig:code, dest:''};
+  const now = j ? serverTime(j) : new Date();
+  const rows = j && Array.isArray(j.data) ? j.data : [];
+  const shown = compact ? rows.slice(0, 2) : rows;
+  return h('section', {class:'mtr-card'},
+    h('header', {style:'--c:#0B7285'},
+      h('h2', {}, info.orig + ' → ' + info.dest), starBtn({type:'ferry', code})),
+    !rows.length
+      ? h('p', {class:'hint', style:'padding:0 14px'}, (j && j.message) || '暫時沒有班次資料。')
+      : h('div', {class:'mtr-dir'}, shown.map((r, i) => h('div', {class:'mtr-row'},
+          h('span', {class:'dest'}, r.vesselcode ? '船 ' + r.vesselcode : '下班船'),
+          h('span', {class:'plat'}, r.rmk_tc || ''),
+          h('span', {class:'clock'}, r.depart_time ? '開船 ' + r.depart_time : ''),
+          ferryPill(r, now, i === 0)))));
+}
+async function refreshFerry(token){
+  const code = $('#ferrySel').value;
+  const j = await getJSON(`${FERRY}?route=${code}`);
+  if (token !== state.token) return;
+  $('#ferryBoard').replaceChildren(ferryCard(code, j));
+}
+function buildFerryControls(){
+  const sel = $('#ferrySel');
+  sel.replaceChildren(...FERRY_GROUPS.map(g =>
+    h('optgroup', {label:g.n}, g.r.map(r => h('option', {value:r.code}, r.orig + ' → ' + r.dest)))));
+  sel.addEventListener('change', refreshActive);
 }
 
 /* ---------- Favourites ---------- */
@@ -870,6 +1108,9 @@ function favRequest(f){
   if (f.type === 'kmb') return getJSON(`${KMB}/eta/${f.stop}/${f.route}/${f.st}`);
   if (f.type === 'ctb') return getJSON(`${CTB}/eta/CTB/${f.stop}/${f.route}`);
   if (f.type === 'gmb') return getJSON(`${GMB}/eta/route-stop/${f.route_id}/${f.seq}/${f.stopSeq}`);
+  if (f.type === 'nlb') return getJSON(`${NLB}/stop.php?action=estimatedArrivals&routeId=${f.routeId}&stopId=${f.stop}&language=zh`);
+  if (f.type === 'lrt') return getJSON(`${LRT}?station_id=${f.sta}&with_special=1`);
+  if (f.type === 'ferry') return getJSON(`${FERRY}?route=${f.code}`);
   return getJSON(`${MTR}?line=${f.line}&sta=${f.sta}`);
 }
 function favBusRow(f, res){
@@ -880,12 +1121,14 @@ function favBusRow(f, res){
     pills = etaPills(items, serverTime(res.value));
   } else if (f.type === 'ctb'){
     pills = etaPills(ctbEtaItems(res.value, f.dir), serverTime(res.value));
+  } else if (f.type === 'nlb'){
+    pills = etaPills(nlbEtaItems(res.value), new Date());
   } else {
     pills = etaPills(gmbEtaItems(res.value, f.seq), new Date());
   }
   const co = f.type.toUpperCase();
   return h('div', {class:'eta-row'},
-    badge(co, f.type === 'gmb' ? f.code : f.route),
+    badge(co, f.type === 'gmb' || f.type === 'nlb' ? f.code : f.route),
     h('span', {class:'to'}, '往 ' + f.dest, h('small', {}, f.name)),
     pills, starBtn(f));
 }
@@ -899,15 +1142,20 @@ async function refreshFav(token){
   if (token !== state.token) return;
   if (results.every(r => r.status === 'rejected')) throw results[0].reason;
   const busRows = [], mtrCards = [];
+  const ferryRows = [];
   state.favs.forEach((f, i) => {
     const res = results[i];
     if (f.type === 'mtr'){
       if (LINES[f.line]) mtrCards.push(mtrCard(f.line, f.sta, res.status === 'fulfilled' ? res.value : null, true));
+    } else if (f.type === 'lrt'){
+      mtrCards.push(lrtSection(f.sta, res.status === 'fulfilled' ? res.value : null));
+    } else if (f.type === 'ferry'){
+      ferryRows.push(ferryCard(f.code, res.status === 'fulfilled' ? res.value : null, true));
     } else busRows.push(favBusRow(f, res));
   });
   out.replaceChildren(
     ...(busRows.length ? [h('section', {class:'stop-card'}, h('h3', {}, '巴士／小巴'), busRows)] : []),
-    ...mtrCards);
+    ...mtrCards, ...ferryRows);
 }
 
 /* ---------- refresh loop & tabs ---------- */
@@ -917,6 +1165,7 @@ async function refreshActive(){
   try{
     if (state.tab === 'bus') await refreshBus(token);
     else if (state.tab === 'mtr') await refreshMtr(token);
+    else if (state.tab === 'ferry') await refreshFerry(token);
     else await refreshFav(token);
     if (token === state.token){ clearError(); stamp(); }
   } catch (e){
@@ -928,7 +1177,7 @@ async function refreshActive(){
 function setTab(tab){
   state.tab = tab;
   for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
-  for (const t of ['bus', 'mtr', 'fav']) $('#p-' + t).hidden = t !== tab;
+  for (const t of ['bus', 'mtr', 'ferry', 'fav']) $('#p-' + t).hidden = t !== tab;
   clearError();
   refreshActive();
 }
@@ -975,6 +1224,9 @@ async function runDiag(){
     await test('小巴 到站時間', `${GMB}/eta/route-stop/${rid}/1/1`, j => JSON.stringify(j.data).slice(0, 90));
   }
   await test('港鐵 中環', `${MTR}?line=TWL&sta=CEN`, j => 'status ' + j.status);
+  await test('輕鐵 兆康', `${LRT}?station_id=100&with_special=1`, j => 'status ' + j.status);
+  await test('新大嶼山巴士 路線', NLB + '/route.php?action=list', j => (j.routes || []).length + ' 條');
+  await test('渡輪 中環-長洲', FERRY + '?route=CECC', j => (j.data || []).length + ' 班');
   box.textContent = lines.join('\n') + '\n完成。';
 }
 $('#diagBtn').addEventListener('click', runDiag);
@@ -1008,10 +1260,12 @@ if (!standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)){
 
 if (location.protocol === 'file:') $('#fileWarn').hidden = false;
 buildMtrControls();
+buildFerryControls();
 setTab(state.favs.length ? 'fav' : 'bus');
 ensureKmbRoutes().catch(() => {});
 ensureCtbRoutes().catch(() => {});
 ensureGmbRoutes().catch(() => {});
+ensureNlbRoutes().catch(() => {});
 })();
 </script>
 </body>

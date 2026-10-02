@@ -1,5 +1,5 @@
 /* Service worker: app shell works offline; realtime ETA calls always go to the network. */
-const VERSION = 'v4';
+const VERSION = 'v7';
 const SHELL = 'hk-eta-shell-' + VERSION;
 const DATA = 'hk-eta-data-' + VERSION;
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
